@@ -1,0 +1,16 @@
+# Hipchat API token
+hipchat: oias8dnapsdn9aods8yona8sdb
+
+# Mapping from names used in files to Hipchat mention names
+mapping:
+  John: DovOpsFromSomewhere
+  Tytek: JustMe
+  Tomek: NobodyWillNeverRedThis
+  Romek: WhoCares
+
+# Days remaining to the end of challenge - updated automatically
+2013-07-29:
+  remaining: 30
+
+2013-07-30:
+  remaining: 30
