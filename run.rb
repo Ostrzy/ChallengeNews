@@ -4,16 +4,14 @@ require 'date'
 require 'uri'
 
 #consts
-DEADLINE  = 36000 # 10:00
-RESET     = 39600 # 11:00
-MULTIPLIER= 2
 TEST      = false
 
 module Files
   PREDICTIONS = 'predictions.yml'
   DELAYS      = 'delays.yml'
   RESETS      = 'resets.yml'
-  METADATA    = 'metadata.yml'
+  SETTINGS    = 'settings.yml'
+  DAILY       = 'daily.yml'
 end
 
 class Day
@@ -32,34 +30,75 @@ end
 
 @day = Day.new(Date.today)
 
-#Process all shit
-YAML::load(File.open(Files::METADATA)).tap do |meta|
-  if meta[@day.curr]
-    puts "Script has already been run today"
-    exit 1
+class Settings
+  attr_reader :hipchat
+
+  def initialize
+    settings = YAML::load(File.open(Files::SETTINGS))
+    @mapping = settings["mapping"]
+    @hipchat = settings["hipchat"]
   end
-  @mapping    = meta["mapping"]
-  @remaining  = meta[@day.prev]["remaining"] - @day.increment
-  @hipchat    = meta["hipchat"]
-end
-@delays = YAML::load(File.open(Files::DELAYS))[@day.curr] || {}
 
-# Find if someone resetted timer today
-@resetters = YAML::load(File.open(Files::RESETS))[@day.curr] || []
-@delays.each do |person, delay|
-  @resetters << person if delay > RESET
-end
-@resetters.uniq!
-@remaining = 30 unless @resetters.empty?
-
-#Calculate predictions
-@predictions = @delays.keys.inject({}) do |memo, person|
-  memo.tap do |m|
-    prediction = @day.curr.to_time + DEADLINE -
-      MULTIPLIER * ([@delays[person], RESET].min - DEADLINE)
-    m[person] = prediction
+  def map name
+    @mapping[name]
   end
 end
+
+@settings = Settings.new
+
+class AlreadyRunError < StandardError; end
+
+class Challenge
+  DEADLINE    = 36000 # 10:00
+  RESET       = 39600 # 11:00
+  MULTIPLIER  = 2
+  LENGTH      = 30
+
+  attr_reader :remaining, :resetters, :predictions
+
+  def initialize day
+    @day = day
+    daily = YAML::load(File.open(Files::DAILY))
+    if !TEST && daily[@day.curr]
+      raise AlreadyRunError, "Challenge for today has already been run"
+    end
+
+    @remaining  = daily[@day.prev]["remaining"] - @day.increment
+    @delays     = YAML::load(File.open(Files::DELAYS))[@day.curr] || {}
+    check_reset
+    calculate_predictions
+  end
+
+  def reset?
+    !@resetters.empty?
+  end
+
+  def delay?
+    !@delays.empty?
+  end
+
+  private
+    def check_reset
+      @resetters = YAML::load(File.open(Files::RESETS))[@day.curr] || []
+      @delays.each do |person, delay|
+        @resetters << person if delay > RESET
+      end
+      @resetters.uniq!
+      @remaining = LENGTH unless @resetters.empty?
+    end
+
+    def calculate_predictions
+      @predictions = @delays.keys.inject({}) do |memo, person|
+        memo.tap do |m|
+          prediction = @day.curr.to_time + DEADLINE -
+            MULTIPLIER * ([@delays[person], RESET].min - DEADLINE)
+          m[person] = prediction
+        end
+      end
+    end
+end
+
+@challenge = Challenge.new(@day)
 
 # Method to add content with next day
 class Writer
@@ -82,7 +121,7 @@ def write_new_day file, date = @day.next, &block
   File.open(file, 'a+') do |f|
     writer = Writer.new(f, date)
     writer.new_day
-    writer.instance_exec @predictions, @remaining, &block
+    writer.instance_exec @challenge.predictions, @challenge.remaining, &block
   end
 end
 
@@ -102,31 +141,31 @@ unless TEST
   end
 
   # Write day specific metadata
-  write_new_day(Files::METADATA, @day.curr) do |_, remaining|
+  write_new_day(Files::DAILY, @day.curr) do |_, remaining|
     write_row "remaining: #{remaining}"
   end
 end
 
 # Construct message for HipChat
 message = "30 day challenge - #{@day.curr}\n"
-unless @resetters.empty?
+if @challenge.reset?
   message += "@all Wszem i wobec ogłaszam reset!\n"
-  message += "Podziękowania należą się #{@resetters.map{ |p| "@#{@mapping[p]}" }.join(', ')}\n"
+  message += "Podziękowania należą się #{@challenge.resetters.map{ |p| "@#{@settings.map(p)}" }.join(', ')}\n"
 end
-message += "Pozostało dni: #{@remaining}\n"
-if @delays.empty?
-  message += "Dzisiaj wszyscy przyszli o czasie!\n"
-else
+message += "Pozostało dni: #{@challenge.remaining}\n"
+if @challenge.delay?
   message += "Godziny przyjścia na dzień #{@day.next}:\n"
-  @predictions.each do |person, prediction|
-    message += "  @#{@mapping[person]} - #{prediction.strftime("%k:%M")}\n"
+  @challenge.predictions.each do |person, prediction|
+    message += "  @#{@settings.map(person)} - #{prediction.strftime("%k:%M")}\n"
   end
+else
+  message += "Dzisiaj wszyscy przyszli o czasie!\n"
 end
 
 # Choose color which suits situation
-color = if !@resetters.empty?
+color = if @challenge.reset?
           "red"
-        elsif !@delays.empty?
+        elsif @challenge.delay?
           "yellow"
         else
           "green"
@@ -143,5 +182,5 @@ params = {
 if TEST
   puts message
 else
-  `curl -d "#{URI.encode_www_form(params)}" https://api.hipchat.com/v1/rooms/message?auth_token=#{@hipchat}`
+  `curl -d "#{URI.encode_www_form(params)}" https://api.hipchat.com/v1/rooms/message?auth_token=#{@settings.hipchat}`
 end
