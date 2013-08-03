@@ -69,6 +69,10 @@ class Challenge
     calculate_predictions
   end
 
+  def potential_resetters
+    @predictions.keys
+  end
+
   def reset?
     !@resetters.empty?
   end
@@ -101,50 +105,78 @@ end
 @challenge = Challenge.new(@day)
 
 # Method to add content with next day
-class Writer
-  def initialize file, date
-    @f    = file
-    @date = date
+class SimpleYamlWriter
+  def initialize file
+    @f = file
   end
 
-  def new_day
-    @f.write "\n"
-    @f.write "#{@date}:\n"
-  end
-
-  def write_row line
-    @f.write "  #{line}\n"
-  end
-end
-
-def write_new_day file, date = @day.next, &block
-  File.open(file, 'a+') do |f|
-    writer = Writer.new(f, date)
-    writer.new_day
-    writer.instance_exec @challenge.predictions, @challenge.remaining, &block
-  end
-end
-
-unless TEST
-  # Add predictions for next day to predictions.yml
-  write_new_day(Files::PREDICTIONS) do |predictions|
-    predictions.each do |person, prediction|
-      write_row "#{person}: #{prediction.strftime("%k:%M")}"
+  def write root, values
+    write_root root
+    if values.is_a? Hash
+      write_hash values
+    elsif values.is_a? Array
+      write_array values
+    else
+      write_else values
     end
   end
 
-  # Add potential resets to resets.yml
-  write_new_day(Files::RESETS) do |predictions|
-    predictions.each do |person, _|
-      write_row "- #{person}"
+  private
+    def write_root key
+      @f.write "\n"
+      @f.write "#{key}:\n"
     end
+
+    def write_row line
+      @f.write "  #{line}\n"
+    end
+
+    def write_hash hash
+      hash.each do |key, value|
+        write_row "#{key}: #{value}"
+      end
+    end
+
+    def write_array arr
+      arr.each do |value|
+        write_row "- #{value}"
+      end
+    end
+
+    def write_else values
+      write_row values.to_s
+    end
+end
+
+class ChallengeWriter
+  def initialize day, challenge, writer = SimpleYamlWriter
+    @day        = day
+    @challenge  = challenge
+    @writer     = writer
   end
 
-  # Write day specific metadata
-  write_new_day(Files::DAILY, @day.curr) do |_, remaining|
-    write_row "remaining: #{remaining}"
+  def write
+    # Add predictions for next day to predictions.yml
+    write_new_day Files::PREDICTIONS, formatted_predictions
+    # Add potential resets to resets.yml
+    write_new_day Files::RESETS, @challenge.potential_resetters
+    # Write day specific data - for now only remaining days
+    write_new_day Files::DAILY, "remaining: #{@challenge.remaining}", @day.curr
   end
+
+  private
+    def write_new_day file, values, date = @day.next
+      File.open(TEST ? 'test.yml' : file, 'a+') do |f|
+        @writer.new(f).write date, values
+      end
+    end
+
+    def formatted_predictions
+      Hash[@challenge.predictions.to_a.map{ |person, time| [person, time.strftime("%k:%M")] }]
+    end
 end
+
+ChallengeWriter.new(@day, @challenge).write
 
 # Construct message for HipChat
 message = "30 day challenge - #{@day.curr}\n"
