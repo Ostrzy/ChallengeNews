@@ -21,8 +21,8 @@ class Day
 
   def initialize today = Date.today
     @curr = today
-    @next = @today + (@today.wday == 5 ? 3 : 1)
-    @prev = @today - (@today.wday == 1 ? 3 : 1)
+    @next = curr + (curr.wday == 5 ? 3 : 1)
+    @prev = curr - (curr.wday == 1 ? 3 : 1)
   end
 
   def increment
