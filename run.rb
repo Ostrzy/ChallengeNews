@@ -178,41 +178,113 @@ end
 
 ChallengeWriter.new(@challenge).write
 
-# Construct message for HipChat
-message = "30 day challenge - #{@day.curr}\n"
-if @challenge.reset?
-  message += "@all Wszem i wobec ogłaszam reset!\n"
-  message += "Podziękowania należą się #{@challenge.resetters.map{ |p| "@#{@settings.map(p)}" }.join(', ')}\n"
-end
-message += "Pozostało dni: #{@challenge.remaining}\n"
-if @challenge.delay?
-  message += "Godziny przyjścia na dzień #{@day.next}:\n"
-  @challenge.predictions.each do |person, prediction|
-    message += "  @#{@settings.map(person)} - #{prediction.strftime("%k:%M")}\n"
+class MessageBuilder
+  def initialize challenge, settings
+    @day        = challenge.day
+    @challenge  = challenge
+    @settings   = settings
+    @message    = []
+    build_message
   end
-else
-  message += "Dzisiaj wszyscy przyszli o czasie!\n"
+
+  def message
+    @rendered_message = @message.join("\n") + "\n"
+  end
+
+  private
+    def build_message
+      challenge_header
+      if @challenge.reset?
+        reset_acclamation
+        reset_thanks
+      end
+      days_left
+      if @challenge.delay?
+        predictions_header
+        predictions
+      else
+        no_predictions
+      end
+    end
+
+    def challenge_header
+      @message << "30 day challenge - #{@day.curr}"
+    end
+
+    def reset_acclamation
+      @message << "@all Wszem i wobec ogłaszam reset!"
+    end
+
+    def reset_thanks
+      @message << "Podziękowania należą się #{@challenge.resetters.map{ |p| "@#{@settings.map(p)}" }.join(', ')}"
+    end
+
+    def days_left
+      @message << "Pozostało dni: #{@challenge.remaining}"
+    end
+
+    def predictions_header
+      @message << "Godziny przyjścia na dzień #{@day.next}:"
+    end
+
+    def predictions
+      @challenge.predictions.each do |person, prediction|
+        @message << "  @#{@settings.map(person)} - #{prediction.strftime("%k:%M")}"
+      end
+    end
+
+    def no_predictions
+      @message << "Dzisiaj wszyscy przyszli o czasie!"
+    end
 end
 
-# Choose color which suits situation
-color = if @challenge.reset?
-          "red"
-        elsif @challenge.delay?
-          "yellow"
-        else
-          "green"
-        end
+class Messenger
+  def initialize challenge, settings
+    @challenge  = challenge
+    @settings   = settings
+    @message    = MessageBuilder.new(challenge, settings).message
+  end
 
-params = {
-  :room_id        => "Brossa 5",
-  :from           => "NaziNews",
-  :message_format => "text",
-  :message        => message,
-  :color          => color
-}
-
-if TEST
-  puts message
-else
-  `curl -d "#{URI.encode_www_form(params)}" https://api.hipchat.com/v1/rooms/message?auth_token=#{@settings.hipchat}`
+  def send
+    raise NotImplementedError
+  end
 end
+
+class HipchatMessenger < Messenger
+  def send
+    `curl -d "#{URI.encode_www_form(params)}" #{url}`
+  end
+
+  private
+    def color
+      if @challenge.reset?
+        "red"
+      elsif @challenge.delay?
+        "yellow"
+      else
+        "green"
+      end
+    end
+
+    def url
+      "https://api.hipchat.com/v1/rooms/message?auth_token=#{@settings.hipchat}"
+    end
+
+    def params
+      {
+        :room_id        => "Brossa 5",
+        :from           => "NaziNews",
+        :message_format => "text",
+        :message        => @message,
+        :color          => color
+      }
+    end
+end
+
+class PutsMessenger < Messenger
+  def send
+    puts @message
+  end
+end
+
+(TEST ? PutsMessenger : HipchatMessenger).new(@challenge, @settings).send
