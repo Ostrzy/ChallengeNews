@@ -8,29 +8,43 @@ DEADLINE  = 36000 # 10:00
 RESET     = 39600 # 11:00
 MULTIPLIER= 2
 
-PREDICTIONS = 'predictions.yml'
-DELAYS      = 'delays.yml'
-RESETS      = 'resets.yml'
-METADATA    = 'metadata.yml'
+module Files
+  PREDICTIONS = 'predictions.yml'
+  DELAYS      = 'delays.yml'
+  RESETS      = 'resets.yml'
+  METADATA    = 'metadata.yml'
+end
 
-$today   = Date.today
-$nextday = $today + ($today.wday == 5 ? 3 : 1)
-$prevday = $today - ($today.wday == 1 ? 3 : 1)
+class Day
+  attr_reader :curr, :next, :prev
+
+  def initialize today = Date.today
+    @curr = today
+    @next = @today + (@today.wday == 5 ? 3 : 1)
+    @prev = @today - (@today.wday == 1 ? 3 : 1)
+  end
+
+  def increment
+    (curr - prev).to_i
+  end
+end
+
+@day = Day.new(Date.today)
 
 #Process all shit
-YAML::load(File.open(METADATA)).tap do |meta|
-  if meta[$today]
+YAML::load(File.open(Files::METADATA)).tap do |meta|
+  if meta[@day.curr]
     puts "Script has already been run today"
     exit 1
   end
   @mapping    = meta["mapping"]
-  @remaining  = meta[$prevday]["remaining"] - ($today - $prevday).to_i
+  @remaining  = meta[@day.prev]["remaining"] - @day.increment
   @hipchat    = meta["hipchat"]
 end
-@delays = YAML::load(File.open(DELAYS))[$today] || {}
+@delays = YAML::load(File.open(Files::DELAYS))[@day.curr] || {}
 
 # Find if someone resetted timer today
-@resetters = YAML::load(File.open(RESETS))[$today] || []
+@resetters = YAML::load(File.open(Files::RESETS))[@day.curr] || []
 @delays.each do |person, delay|
   @resetters << person if delay > RESET
 end
@@ -40,7 +54,7 @@ end
 #Calculate predictions
 @predictions = @delays.keys.inject({}) do |memo, person|
   memo.tap do |m|
-    prediction = $today.to_time + DEADLINE -
+    prediction = @day.curr.to_time + DEADLINE -
       MULTIPLIER * ([@delays[person], RESET].min - DEADLINE)
     m[person] = prediction
   end
@@ -48,7 +62,7 @@ end
 
 # Method to add content with next day
 class Writer
-  def initialize file, date = $nextday
+  def initialize file, date
     @f    = file
     @date = date
   end
@@ -63,7 +77,7 @@ class Writer
   end
 end
 
-def write_new_day file, date = $nextday, &block
+def write_new_day file, date = @day.next, &block
   File.open(file, 'a+') do |f|
     writer = Writer.new(f, date)
     writer.new_day
@@ -72,26 +86,26 @@ def write_new_day file, date = $nextday, &block
 end
 
 # Add predictions for next day to predictions.yml
-write_new_day(PREDICTIONS) do |predictions|
+write_new_day(Files::PREDICTIONS) do |predictions|
   predictions.each do |person, prediction|
     write_row "#{person}: #{prediction.strftime("%k:%M")}"
   end
 end
 
 # Add potential resets to resets.yml
-write_new_day(RESETS) do |predictions|
+write_new_day(Files::RESETS) do |predictions|
   predictions.each do |person, _|
     write_row "- #{person}"
   end
 end
 
 # Write day specific metadata
-write_new_day(METADATA, $today) do |_, remaining|
+write_new_day(Files::METADATA, @day.curr) do |_, remaining|
   write_row "remaining: #{remaining}"
 end
 
 # Construct message for HipChat
-message = "30 day challenge - #{$today}\n"
+message = "30 day challenge - #{@day.curr}\n"
 unless @resetters.empty?
   message += "@all Wszem i wobec ogłaszam reset!\n"
   message += "Podziękowania należą się #{@resetters.map{ |p| "@#{@mapping[p]}" }.join(', ')}\n"
@@ -100,7 +114,7 @@ message += "Pozostało dni: #{@remaining}\n"
 if @delays.empty?
   message += "Dzisiaj wszyscy przyszli o czasie!\n"
 else
-  message += "Godziny przyjścia na dzień #{$nextday}:\n"
+  message += "Godziny przyjścia na dzień #{@day.next}:\n"
   @predictions.each do |person, prediction|
     message += "  @#{@mapping[person]} - #{prediction.strftime("%k:%M")}\n"
   end
