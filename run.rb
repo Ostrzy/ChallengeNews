@@ -7,6 +7,7 @@ require 'uri'
 DEADLINE  = 36000 # 10:00
 RESET     = 39600 # 11:00
 MULTIPLIER= 2
+TEST      = false
 
 module Files
   PREDICTIONS = 'predictions.yml'
@@ -85,23 +86,25 @@ def write_new_day file, date = @day.next, &block
   end
 end
 
-# Add predictions for next day to predictions.yml
-write_new_day(Files::PREDICTIONS) do |predictions|
-  predictions.each do |person, prediction|
-    write_row "#{person}: #{prediction.strftime("%k:%M")}"
+unless TEST
+  # Add predictions for next day to predictions.yml
+  write_new_day(Files::PREDICTIONS) do |predictions|
+    predictions.each do |person, prediction|
+      write_row "#{person}: #{prediction.strftime("%k:%M")}"
+    end
   end
-end
 
-# Add potential resets to resets.yml
-write_new_day(Files::RESETS) do |predictions|
-  predictions.each do |person, _|
-    write_row "- #{person}"
+  # Add potential resets to resets.yml
+  write_new_day(Files::RESETS) do |predictions|
+    predictions.each do |person, _|
+      write_row "- #{person}"
+    end
   end
-end
 
-# Write day specific metadata
-write_new_day(Files::METADATA, @day.curr) do |_, remaining|
-  write_row "remaining: #{remaining}"
+  # Write day specific metadata
+  write_new_day(Files::METADATA, @day.curr) do |_, remaining|
+    write_row "remaining: #{remaining}"
+  end
 end
 
 # Construct message for HipChat
@@ -137,4 +140,8 @@ params = {
   :color          => color
 }
 
-`curl -d "#{URI.encode_www_form(params)}" https://api.hipchat.com/v1/rooms/message?auth_token=#{@hipchat}`
+if TEST
+  puts message
+else
+  `curl -d "#{URI.encode_www_form(params)}" https://api.hipchat.com/v1/rooms/message?auth_token=#{@hipchat}`
+end
