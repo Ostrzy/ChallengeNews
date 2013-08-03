@@ -54,7 +54,7 @@ class Challenge
   MULTIPLIER  = 2
   LENGTH      = 30
 
-  attr_reader :remaining, :resetters, :predictions
+  attr_reader :remaining, :resetters, :predictions, :day
 
   def initialize day
     @day = day
@@ -149,8 +149,8 @@ class SimpleYamlWriter
 end
 
 class ChallengeWriter
-  def initialize day, challenge, writer = SimpleYamlWriter
-    @day        = day
+  def initialize challenge, writer = SimpleYamlWriter
+    @day        = challenge.day
     @challenge  = challenge
     @writer     = writer
   end
@@ -176,7 +176,7 @@ class ChallengeWriter
     end
 end
 
-ChallengeWriter.new(@day, @challenge).write
+ChallengeWriter.new(@challenge).write
 
 # Construct message for HipChat
 message = "30 day challenge - #{@day.curr}\n"
