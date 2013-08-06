@@ -11,7 +11,7 @@ require './settings.rb'
 require './writers.rb'
 
 #consts
-TEST      = true
+TEST      = false
 
 module Files
   PREDICTIONS = 'data/predictions.yml'
@@ -21,7 +21,7 @@ module Files
   DAILY       = 'data/daily.yml'
 end
 
-@day        = Day.new(Date.today - 1)
+@day        = Day.new(Date.today)
 @settings   = Settings.new
 @challenge  = Challenge.new(@day)
 ChallengeWriter.new(@challenge).write
