@@ -36,7 +36,8 @@ class HipchatMessenger < Messenger
         :from           => "NaziNews",
         :message_format => "text",
         :message        => @message,
-        :color          => color
+        :color          => color,
+        :notify         => "1"
       }
     end
 end
