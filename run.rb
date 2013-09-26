@@ -12,7 +12,7 @@ require './writers.rb'
 
 #consts
 TEST      = false
-DELAYED   = true
+DELAYED   = false
 
 module Files
   PREDICTIONS = 'data/predictions.yml'
