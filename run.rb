@@ -12,6 +12,7 @@ require './writers.rb'
 
 #consts
 TEST      = false
+DELAYED   = true
 
 module Files
   PREDICTIONS = 'data/predictions.yml'
@@ -25,4 +26,4 @@ end
 @settings   = Settings.new
 @challenge  = Challenge.new(@day)
 ChallengeWriter.new(@challenge).write
-(TEST ? PutsMessenger : HipchatMessenger).new(@challenge, @settings).send
+(TEST || DELAYED ? PutsMessenger : HipchatMessenger).new(@challenge, @settings).send
